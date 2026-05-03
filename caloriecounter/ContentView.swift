@@ -160,7 +160,9 @@ struct ContentView: View {
                 syncTourSheets()
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active { refreshDayIfNeeded() }
+                if newPhase == .active {
+                    refreshDayIfNeeded()
+                }
             }
             .onChange(of: hasCompletedOnboarding) { _, newValue in
                 if !newValue { showingOnboarding = true }
@@ -363,20 +365,44 @@ struct AddFoodView: View {
     @State private var calories: String = ""
     @State private var query: String = ""
 
-    /// Foods from the bundled catalog whose name matches the query
-    /// (or a curated set of starter suggestions when the query is empty).
-    private var suggestions: [CatalogFood] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return FoodCatalog.popular }
-        let lower = trimmed.lowercased()
-        let all = FoodCatalog.all
-        // Prefix matches first, then substring matches — more useful order.
-        let prefix = all.filter { $0.name.lowercased().hasPrefix(lower) }
-        let contains = all.filter {
-            !$0.name.lowercased().hasPrefix(lower) &&
-            $0.name.lowercased().contains(lower)
+    // All foods, loaded from Supabase.
+    @State private var foods: [FavoriteFood] = []
+    @State private var loadState: LoadState = .loading
+
+    /// Favourite food IDs persisted across launches as a CSV of UUID strings.
+    @AppStorage("favoriteFoodIDs") private var favoriteIDsCSV: String = ""
+
+    private enum LoadState: Equatable {
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    private var favoriteIDs: Set<UUID> {
+        Set(favoriteIDsCSV
+            .split(separator: ",")
+            .compactMap { UUID(uuidString: String($0)) })
+    }
+
+    /// Foods filtered by the current query (case-insensitive). Prefix matches
+    /// come before substring matches for a more useful search order.
+    private var filteredFoods: [FavoriteFood] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return foods }
+        let prefix = foods.filter { $0.name.lowercased().hasPrefix(trimmed) }
+        let contains = foods.filter {
+            !$0.name.lowercased().hasPrefix(trimmed) &&
+            $0.name.lowercased().contains(trimmed)
         }
-        return Array((prefix + contains).prefix(40))
+        return prefix + contains
+    }
+
+    private var favoriteFoods: [FavoriteFood] {
+        filteredFoods.filter { favoriteIDs.contains($0.id) }
+    }
+
+    private var otherFoods: [FavoriteFood] {
+        filteredFoods.filter { !favoriteIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -388,36 +414,62 @@ struct AddFoodView: View {
                         .keyboardType(.numberPad)
                 }
 
-                Section {
-                    ForEach(suggestions) { food in
-                        Button {
-                            name = food.name
-                            calories = String(food.calories)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(food.name).foregroundStyle(.primary)
-                                    Text(food.serving)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text("\(food.calories) kcal")
-                                    .font(.callout.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
+                switch loadState {
+                case .loading:
+                    Section {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Loading foods…")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    if suggestions.isEmpty {
-                        Text("No matches. Type a name and calories above to log it manually.")
+
+                case .failed(let message):
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Couldn't load foods", systemImage: "wifi.exclamationmark")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text(message)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task { await loadFoods() }
+                            }
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        }
                     }
-                } header: {
-                    Text(query.isEmpty ? "Popular foods" : "Matches")
-                } footer: {
-                    Text("Calorie values are approximate, per the listed serving.")
-                        .font(.caption2)
+
+                case .loaded:
+                    if !favoriteFoods.isEmpty {
+                        Section {
+                            ForEach(favoriteFoods) { food in
+                                foodRow(food)
+                            }
+                        } header: {
+                            Text("Favourites")
+                        }
+                    }
+
+                    Section {
+                        if otherFoods.isEmpty && favoriteFoods.isEmpty {
+                            Text(query.isEmpty
+                                 ? "No foods available."
+                                 : "No matches for \"\(query)\".")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(otherFoods) { food in
+                                foodRow(food)
+                            }
+                        }
+                    } header: {
+                        Text(query.isEmpty ? "Popular foods" : "Matches")
+                    } footer: {
+                        Text("Swipe right on a food to add it to your favourites.")
+                            .font(.caption2)
+                    }
                 }
             }
             .searchable(text: $query,
@@ -434,6 +486,43 @@ struct AddFoodView: View {
                         .disabled(!canSave)
                 }
             }
+            .task { await loadFoods() }
+        }
+    }
+
+    @ViewBuilder
+    private func foodRow(_ food: FavoriteFood) -> some View {
+        let isFavorite = favoriteIDs.contains(food.id)
+        Button {
+            name = food.name
+            calories = String(food.calories)
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(food.name).foregroundStyle(.primary)
+                    if !food.serving.isEmpty {
+                        Text(food.serving)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text("\(food.calories) kcal")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                withAnimation { toggleFavorite(food.id) }
+            } label: {
+                if isFavorite {
+                    Label("Unfavourite", systemImage: "star.slash.fill")
+                } else {
+                    Label("Favourite", systemImage: "star.fill")
+                }
+            }
+            .tint(isFavorite ? .gray : .yellow)
         }
     }
 
@@ -444,10 +533,30 @@ struct AddFoodView: View {
 
     private func save() {
         guard let cals = Int(calories) else { return }
-        let entry = FoodEntry(name: name.trimmingCharacters(in: .whitespaces),
-                              calories: cals)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let entry = FoodEntry(name: trimmedName, calories: cals)
         modelContext.insert(entry)
         dismiss()
+    }
+
+    private func toggleFavorite(_ id: UUID) {
+        var ids = favoriteIDs
+        if ids.contains(id) {
+            ids.remove(id)
+        } else {
+            ids.insert(id)
+        }
+        favoriteIDsCSV = ids.map(\.uuidString).sorted().joined(separator: ",")
+    }
+
+    private func loadFoods() async {
+        loadState = .loading
+        do {
+            foods = try await SupabaseService.fetchFavoriteFoods()
+            loadState = .loaded
+        } catch {
+            loadState = .failed(error.localizedDescription)
+        }
     }
 }
 
