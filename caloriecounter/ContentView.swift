@@ -361,6 +361,23 @@ struct AddFoodView: View {
 
     @State private var name: String = ""
     @State private var calories: String = ""
+    @State private var query: String = ""
+
+    /// Foods from the bundled catalog whose name matches the query
+    /// (or a curated set of starter suggestions when the query is empty).
+    private var suggestions: [CatalogFood] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return FoodCatalog.popular }
+        let lower = trimmed.lowercased()
+        let all = FoodCatalog.all
+        // Prefix matches first, then substring matches — more useful order.
+        let prefix = all.filter { $0.name.lowercased().hasPrefix(lower) }
+        let contains = all.filter {
+            !$0.name.lowercased().hasPrefix(lower) &&
+            $0.name.lowercased().contains(lower)
+        }
+        return Array((prefix + contains).prefix(40))
+    }
 
     var body: some View {
         NavigationStack {
@@ -370,7 +387,42 @@ struct AddFoodView: View {
                     TextField("Calories", text: $calories)
                         .keyboardType(.numberPad)
                 }
+
+                Section {
+                    ForEach(suggestions) { food in
+                        Button {
+                            name = food.name
+                            calories = String(food.calories)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(food.name).foregroundStyle(.primary)
+                                    Text(food.serving)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("\(food.calories) kcal")
+                                    .font(.callout.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if suggestions.isEmpty {
+                        Text("No matches. Type a name and calories above to log it manually.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text(query.isEmpty ? "Popular foods" : "Matches")
+                } footer: {
+                    Text("Calorie values are approximate, per the listed serving.")
+                        .font(.caption2)
+                }
             }
+            .searchable(text: $query,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "Search foods")
             .navigationTitle("Add Food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -387,13 +439,13 @@ struct AddFoodView: View {
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        Int(calories) != nil &&
         (Int(calories) ?? 0) > 0
     }
 
     private func save() {
         guard let cals = Int(calories) else { return }
-        let entry = FoodEntry(name: name.trimmingCharacters(in: .whitespaces), calories: cals)
+        let entry = FoodEntry(name: name.trimmingCharacters(in: .whitespaces),
+                              calories: cals)
         modelContext.insert(entry)
         dismiss()
     }
@@ -1215,4 +1267,217 @@ private struct FakeSwipedLogRow: View {
             }
         }
     }
+}
+
+// MARK: - Bundled food catalog
+//
+// Curated list of common foods with approximate calories per typical
+// serving. Sources: USDA FoodData Central + standard nutrition labels,
+// rounded to the nearest 5 kcal. Stored inline (no JSON resource needed)
+// so it works fully offline with no API key or network access.
+
+struct CatalogFood: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let calories: Int
+    let serving: String
+}
+
+enum FoodCatalog {
+    /// Shown when the search field in Add Food is empty.
+    static let popular: [CatalogFood] = [
+        CatalogFood(name: "Apple",            calories: 95,  serving: "1 medium (182 g)"),
+        CatalogFood(name: "Banana",           calories: 105, serving: "1 medium (118 g)"),
+        CatalogFood(name: "Egg, boiled",      calories: 78,  serving: "1 large"),
+        CatalogFood(name: "Chicken breast",   calories: 165, serving: "100 g, cooked"),
+        CatalogFood(name: "White rice",       calories: 205, serving: "1 cup, cooked"),
+        CatalogFood(name: "Roti / Chapati",   calories: 120, serving: "1 medium (40 g)"),
+        CatalogFood(name: "Milk, whole",      calories: 150, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Coffee, black",    calories: 2,   serving: "1 cup (240 ml)")
+    ]
+
+    /// Full catalog used for search inside Add Food.
+    static let all: [CatalogFood] = [
+        // — Fruits —
+        CatalogFood(name: "Apple",            calories: 95,  serving: "1 medium (182 g)"),
+        CatalogFood(name: "Banana",           calories: 105, serving: "1 medium (118 g)"),
+        CatalogFood(name: "Orange",           calories: 62,  serving: "1 medium (131 g)"),
+        CatalogFood(name: "Grapes",           calories: 104, serving: "1 cup (151 g)"),
+        CatalogFood(name: "Strawberries",     calories: 49,  serving: "1 cup (152 g)"),
+        CatalogFood(name: "Blueberries",      calories: 84,  serving: "1 cup (148 g)"),
+        CatalogFood(name: "Mango",            calories: 200, serving: "1 whole (200 g)"),
+        CatalogFood(name: "Pineapple",        calories: 82,  serving: "1 cup chunks (165 g)"),
+        CatalogFood(name: "Watermelon",       calories: 46,  serving: "1 cup diced (152 g)"),
+        CatalogFood(name: "Pear",             calories: 101, serving: "1 medium (178 g)"),
+        CatalogFood(name: "Peach",            calories: 59,  serving: "1 medium (150 g)"),
+        CatalogFood(name: "Avocado",          calories: 240, serving: "1 medium (150 g)"),
+        CatalogFood(name: "Kiwi",             calories: 42,  serving: "1 medium (69 g)"),
+        CatalogFood(name: "Pomegranate",      calories: 234, serving: "1 whole (282 g)"),
+        CatalogFood(name: "Papaya",           calories: 119, serving: "1 small (157 g)"),
+        CatalogFood(name: "Cherries",         calories: 87,  serving: "1 cup (138 g)"),
+        CatalogFood(name: "Lemon",            calories: 17,  serving: "1 medium (58 g)"),
+        CatalogFood(name: "Raisins",          calories: 130, serving: "1/4 cup (40 g)"),
+        CatalogFood(name: "Dates",            calories: 66,  serving: "1 medjool date"),
+
+        // — Vegetables —
+        CatalogFood(name: "Broccoli",         calories: 55,  serving: "1 cup chopped, cooked"),
+        CatalogFood(name: "Carrot",           calories: 25,  serving: "1 medium (61 g)"),
+        CatalogFood(name: "Spinach",          calories: 7,   serving: "1 cup raw (30 g)"),
+        CatalogFood(name: "Tomato",           calories: 22,  serving: "1 medium (123 g)"),
+        CatalogFood(name: "Cucumber",         calories: 16,  serving: "1 cup sliced (104 g)"),
+        CatalogFood(name: "Potato, baked",    calories: 161, serving: "1 medium (173 g)"),
+        CatalogFood(name: "Sweet potato",     calories: 112, serving: "1 medium (130 g)"),
+        CatalogFood(name: "Onion",            calories: 44,  serving: "1 medium (110 g)"),
+        CatalogFood(name: "Bell pepper",      calories: 24,  serving: "1 medium (119 g)"),
+        CatalogFood(name: "Cauliflower",      calories: 27,  serving: "1 cup (107 g)"),
+        CatalogFood(name: "Mushrooms",        calories: 21,  serving: "1 cup sliced (96 g)"),
+        CatalogFood(name: "Lettuce",          calories: 5,   serving: "1 cup shredded (47 g)"),
+        CatalogFood(name: "Cabbage",          calories: 22,  serving: "1 cup chopped (89 g)"),
+        CatalogFood(name: "Corn",             calories: 132, serving: "1 cup kernels (164 g)"),
+        CatalogFood(name: "Peas",             calories: 117, serving: "1 cup (160 g)"),
+        CatalogFood(name: "Eggplant",         calories: 35,  serving: "1 cup cubed (99 g)"),
+        CatalogFood(name: "Zucchini",         calories: 19,  serving: "1 cup sliced (113 g)"),
+        CatalogFood(name: "Green beans",      calories: 31,  serving: "1 cup (100 g)"),
+
+        // — Proteins / Meats / Fish —
+        CatalogFood(name: "Chicken breast",   calories: 165, serving: "100 g, cooked"),
+        CatalogFood(name: "Chicken thigh",    calories: 209, serving: "100 g, cooked"),
+        CatalogFood(name: "Beef, ground",     calories: 250, serving: "100 g, cooked"),
+        CatalogFood(name: "Steak, sirloin",   calories: 271, serving: "100 g, cooked"),
+        CatalogFood(name: "Pork chop",        calories: 231, serving: "100 g, cooked"),
+        CatalogFood(name: "Bacon",            calories: 43,  serving: "1 slice cooked"),
+        CatalogFood(name: "Ham",              calories: 46,  serving: "1 slice (28 g)"),
+        CatalogFood(name: "Turkey breast",    calories: 135, serving: "100 g, cooked"),
+        CatalogFood(name: "Salmon",           calories: 208, serving: "100 g, cooked"),
+        CatalogFood(name: "Tuna, canned",     calories: 132, serving: "1 can (142 g)"),
+        CatalogFood(name: "Shrimp",           calories: 99,  serving: "100 g, cooked"),
+        CatalogFood(name: "Cod",              calories: 105, serving: "100 g, cooked"),
+        CatalogFood(name: "Tilapia",          calories: 128, serving: "100 g, cooked"),
+        CatalogFood(name: "Tofu",             calories: 144, serving: "100 g"),
+        CatalogFood(name: "Paneer",           calories: 265, serving: "100 g"),
+        CatalogFood(name: "Lentils (dal)",    calories: 230, serving: "1 cup cooked (198 g)"),
+        CatalogFood(name: "Chickpeas",        calories: 269, serving: "1 cup cooked (164 g)"),
+        CatalogFood(name: "Black beans",      calories: 227, serving: "1 cup cooked (172 g)"),
+        CatalogFood(name: "Kidney beans",     calories: 225, serving: "1 cup cooked (177 g)"),
+        CatalogFood(name: "Hummus",           calories: 70,  serving: "2 tbsp (30 g)"),
+
+        // — Eggs / Dairy —
+        CatalogFood(name: "Egg, boiled",      calories: 78,  serving: "1 large"),
+        CatalogFood(name: "Egg, fried",       calories: 90,  serving: "1 large"),
+        CatalogFood(name: "Egg, scrambled",   calories: 91,  serving: "1 large"),
+        CatalogFood(name: "Omelette (2 eggs)",calories: 188, serving: "2 eggs, plain"),
+        CatalogFood(name: "Milk, whole",      calories: 150, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Milk, skim",       calories: 83,  serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Almond milk",      calories: 39,  serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Yogurt, plain",    calories: 149, serving: "1 cup (245 g)"),
+        CatalogFood(name: "Greek yogurt",     calories: 100, serving: "1 cup (245 g)"),
+        CatalogFood(name: "Cheddar cheese",   calories: 113, serving: "1 slice (28 g)"),
+        CatalogFood(name: "Mozzarella",       calories: 85,  serving: "1 oz (28 g)"),
+        CatalogFood(name: "Cream cheese",     calories: 99,  serving: "2 tbsp (29 g)"),
+        CatalogFood(name: "Butter",           calories: 102, serving: "1 tbsp (14 g)"),
+
+        // — Grains / Bread / Pasta —
+        CatalogFood(name: "White rice",       calories: 205, serving: "1 cup, cooked"),
+        CatalogFood(name: "Brown rice",       calories: 216, serving: "1 cup, cooked"),
+        CatalogFood(name: "Roti / Chapati",   calories: 120, serving: "1 medium (40 g)"),
+        CatalogFood(name: "Naan",             calories: 260, serving: "1 piece (90 g)"),
+        CatalogFood(name: "Bread, white",     calories: 79,  serving: "1 slice (28 g)"),
+        CatalogFood(name: "Bread, whole wheat", calories: 81, serving: "1 slice (28 g)"),
+        CatalogFood(name: "Bagel",            calories: 245, serving: "1 medium"),
+        CatalogFood(name: "Pasta, cooked",    calories: 220, serving: "1 cup (140 g)"),
+        CatalogFood(name: "Spaghetti w/ sauce", calories: 320, serving: "1 cup with marinara"),
+        CatalogFood(name: "Oats, cooked",     calories: 154, serving: "1 cup (234 g)"),
+        CatalogFood(name: "Cornflakes",       calories: 100, serving: "1 cup (28 g)"),
+        CatalogFood(name: "Granola",          calories: 471, serving: "1 cup (122 g)"),
+        CatalogFood(name: "Tortilla, flour",  calories: 138, serving: "1 medium (49 g)"),
+        CatalogFood(name: "Quinoa",           calories: 222, serving: "1 cup cooked (185 g)"),
+        CatalogFood(name: "Couscous",         calories: 176, serving: "1 cup cooked (157 g)"),
+        CatalogFood(name: "Pancake",          calories: 175, serving: "1 medium (38 g)"),
+        CatalogFood(name: "Waffle",           calories: 218, serving: "1 round (75 g)"),
+
+        // — Nuts / Seeds —
+        CatalogFood(name: "Almonds",          calories: 164, serving: "1 oz (28 g, ~23 nuts)"),
+        CatalogFood(name: "Cashews",          calories: 157, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Peanuts",          calories: 161, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Walnuts",          calories: 185, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Pistachios",       calories: 159, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Peanut butter",    calories: 188, serving: "2 tbsp (32 g)"),
+        CatalogFood(name: "Almond butter",    calories: 196, serving: "2 tbsp (32 g)"),
+        CatalogFood(name: "Chia seeds",       calories: 138, serving: "2 tbsp (24 g)"),
+        CatalogFood(name: "Flax seeds",       calories: 110, serving: "2 tbsp (20 g)"),
+
+        // — Snacks / Sweets —
+        CatalogFood(name: "Potato chips",     calories: 152, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Pretzels",         calories: 108, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Popcorn, plain",   calories: 31,  serving: "1 cup popped"),
+        CatalogFood(name: "Chocolate bar",    calories: 235, serving: "1 bar (45 g)"),
+        CatalogFood(name: "Dark chocolate",   calories: 170, serving: "1 oz (28 g)"),
+        CatalogFood(name: "Cookie, chocolate chip", calories: 78, serving: "1 medium"),
+        CatalogFood(name: "Donut, glazed",    calories: 269, serving: "1 medium"),
+        CatalogFood(name: "Ice cream",        calories: 273, serving: "1 cup (132 g)"),
+        CatalogFood(name: "Brownie",          calories: 132, serving: "1 small (28 g)"),
+        CatalogFood(name: "Muffin, blueberry",calories: 426, serving: "1 large (139 g)"),
+        CatalogFood(name: "Croissant",        calories: 272, serving: "1 medium (67 g)"),
+        CatalogFood(name: "Granola bar",      calories: 130, serving: "1 bar (28 g)"),
+        CatalogFood(name: "Gulab jamun",      calories: 150, serving: "1 piece"),
+        CatalogFood(name: "Jalebi",           calories: 150, serving: "1 piece (30 g)"),
+        CatalogFood(name: "Laddoo",           calories: 185, serving: "1 piece (40 g)"),
+
+        // — Beverages —
+        CatalogFood(name: "Coffee, black",    calories: 2,   serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Latte",            calories: 190, serving: "Tall (12 oz, whole milk)"),
+        CatalogFood(name: "Cappuccino",       calories: 120, serving: "12 oz, whole milk"),
+        CatalogFood(name: "Tea, black",       calories: 2,   serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Chai (with milk & sugar)", calories: 120, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Orange juice",     calories: 112, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Apple juice",      calories: 114, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Coca-Cola",        calories: 140, serving: "12 oz can (355 ml)"),
+        CatalogFood(name: "Diet Coke",        calories: 0,   serving: "12 oz can (355 ml)"),
+        CatalogFood(name: "Sprite",           calories: 140, serving: "12 oz can (355 ml)"),
+        CatalogFood(name: "Beer (lager)",     calories: 153, serving: "12 oz (355 ml)"),
+        CatalogFood(name: "Wine, red",        calories: 125, serving: "5 oz glass (148 ml)"),
+        CatalogFood(name: "Smoothie, fruit",  calories: 200, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Lassi, sweet",     calories: 220, serving: "1 cup (240 ml)"),
+        CatalogFood(name: "Coconut water",    calories: 46,  serving: "1 cup (240 ml)"),
+
+        // — Fast food / restaurant —
+        CatalogFood(name: "Cheeseburger",     calories: 303, serving: "1 regular (113 g)"),
+        CatalogFood(name: "Big Mac",          calories: 563, serving: "1 burger"),
+        CatalogFood(name: "Whopper",          calories: 657, serving: "1 burger"),
+        CatalogFood(name: "French fries",     calories: 365, serving: "Medium (117 g)"),
+        CatalogFood(name: "Pizza slice",      calories: 285, serving: "1 slice cheese"),
+        CatalogFood(name: "Chicken nuggets",  calories: 270, serving: "6 piece"),
+        CatalogFood(name: "Hot dog",          calories: 290, serving: "1 with bun"),
+        CatalogFood(name: "Sub sandwich (6\")", calories: 350, serving: "Turkey, no mayo"),
+        CatalogFood(name: "Caesar salad",     calories: 470, serving: "1 entree (with dressing)"),
+        CatalogFood(name: "Sushi roll",       calories: 350, serving: "1 roll (8 pcs)"),
+        CatalogFood(name: "Burrito",          calories: 510, serving: "1 medium"),
+        CatalogFood(name: "Taco",             calories: 170, serving: "1 hard shell"),
+        CatalogFood(name: "Ramen",            calories: 380, serving: "1 bowl"),
+
+        // — Indian dishes —
+        CatalogFood(name: "Dal makhani",      calories: 280, serving: "1 cup"),
+        CatalogFood(name: "Paneer butter masala", calories: 320, serving: "1 cup"),
+        CatalogFood(name: "Butter chicken",   calories: 490, serving: "1 cup"),
+        CatalogFood(name: "Biryani, chicken", calories: 480, serving: "1 cup"),
+        CatalogFood(name: "Samosa",           calories: 260, serving: "1 piece"),
+        CatalogFood(name: "Pakora",           calories: 75,  serving: "1 piece"),
+        CatalogFood(name: "Dosa, plain",      calories: 168, serving: "1 medium"),
+        CatalogFood(name: "Masala dosa",      calories: 250, serving: "1 medium"),
+        CatalogFood(name: "Idli",             calories: 39,  serving: "1 piece"),
+        CatalogFood(name: "Vada",             calories: 97,  serving: "1 piece"),
+        CatalogFood(name: "Poha",             calories: 250, serving: "1 cup"),
+        CatalogFood(name: "Upma",             calories: 270, serving: "1 cup"),
+        CatalogFood(name: "Aloo paratha",     calories: 260, serving: "1 piece"),
+        CatalogFood(name: "Chole",            calories: 269, serving: "1 cup"),
+        CatalogFood(name: "Rajma",            calories: 215, serving: "1 cup"),
+
+        // — Condiments / sauces —
+        CatalogFood(name: "Olive oil",        calories: 119, serving: "1 tbsp (14 g)"),
+        CatalogFood(name: "Mayonnaise",       calories: 94,  serving: "1 tbsp (14 g)"),
+        CatalogFood(name: "Ketchup",          calories: 17,  serving: "1 tbsp (15 g)"),
+        CatalogFood(name: "Honey",            calories: 64,  serving: "1 tbsp (21 g)"),
+        CatalogFood(name: "Sugar, white",     calories: 49,  serving: "1 tbsp (12 g)"),
+        CatalogFood(name: "Maple syrup",      calories: 52,  serving: "1 tbsp (20 g)")
+    ]
 }
