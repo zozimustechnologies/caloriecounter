@@ -9,10 +9,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class Item {
+final class FoodEntry {
+    var name: String
+    var calories: Int
     var timestamp: Date
-    
-    init(timestamp: Date) {
+
+    init(name: String, calories: Int, timestamp: Date = Date()) {
+        self.name = name
+        self.calories = calories
         self.timestamp = timestamp
     }
 }
