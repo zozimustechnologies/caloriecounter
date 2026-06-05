@@ -64,22 +64,16 @@ body:
       required: true
 
   - type: input
-    id: app_version
-    attributes:
-      label: App Version
-      placeholder: v1.0.0
-
-  - type: input
     id: device
     attributes:
       label: Device
-      placeholder: iPhone 15 / Pixel 8 / Web Browser
+      placeholder: iPhone 17 / iPhone 16 Pro
 
   - type: input
     id: os
     attributes:
       label: Operating System
-      placeholder: iOS 18 / Android 15 / macOS / Windows
+      placeholder: iOS 18 / iOS 17
 
   - type: textarea
     id: screenshots
@@ -91,4 +85,5 @@ body:
     id: additional
     attributes:
       label: Additional Context
+      placeholder: Leave empty if not needed
 
