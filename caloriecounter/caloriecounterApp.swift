@@ -2,7 +2,7 @@
 //  caloriecounterApp.swift
 //  caloriecounter
 //
-//  Created by DJAviCC on 02/05/26.
+//  Created by Avi Chadda on 02/05/26.
 //
 
 import SwiftUI
