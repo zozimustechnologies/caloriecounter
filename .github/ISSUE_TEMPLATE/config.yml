@@ -1,1 +1,5 @@
-
+blank_issues_enabled: false
+contact_links:
+  - name: Our Website
+    url: https://zozimustechnologies.github.io
+    about: If you want to explore, see our website!
