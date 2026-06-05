@@ -3,8 +3,7 @@ description: Report a bug or unexpected behavior
 title: "[BUG]: "
 labels:
   - bug
-type:
-  - bug
+type: Bug
 
 body:
   - type: markdown
